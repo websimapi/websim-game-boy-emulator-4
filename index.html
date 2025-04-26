@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Game Boy Emulator</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            background-color: #f0f0f0;
+            margin: 0;
+            padding: 20px;
+        }
+        #gameboy-container {
+            margin: 0 auto;
+            width: 320px;
+            padding: 20px;
+            background-color: #8b8b8b;
+            border-radius: 15px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+        #screen {
+            width: 320px;
+            height: 288px;
+            image-rendering: pixelated;
+            background-color: #9bbc0f;
+            margin: 0 auto;
+        }
+        #controls {
+            margin-top: 20px;
+        }
+        #file-input {
+            display: none;
+        }
+        #rom-label {
+            padding: 10px 15px;
+            background-color: #306230;
+            color: white;
+            cursor: pointer;
+            border-radius: 5px;
+            display: inline-block;
+        }
+        #rom-name {
+            margin-top: 10px;
+            font-size: 14px;
+        }
+        #fps {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background-color: rgba(0, 0, 0, 0.5);
+            color: white;
+            padding: 5px;
+            border-radius: 3px;
+        }
+        .instructions {
+            margin-top: 20px;
+            text-align: left;
+            background-color: #fff;
+            padding: 15px;
+            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        .keys {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+        }
+        .key-group {
+            flex: 1;
+            min-width: 200px;
+            margin: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Game Boy Emulator</h1>
+    
+    <div id="gameboy-container">
+        <canvas id="screen" width="160" height="144"></canvas>
+        <div id="fps">0 FPS</div>
+        
+        <div id="controls">
+            <label id="rom-label" for="file-input">Load ROM</label>
+            <input type="file" id="file-input" accept=".gb">
+            <div id="rom-name">No ROM loaded</div>
+        </div>
+    </div>
+    
+    <div class="instructions">
+        <h2>Controls:</h2>
+        <div class="keys">
+            <div class="key-group">
+                <p><strong>D-Pad:</strong> Arrow Keys</p>
+                <p><strong>A Button:</strong> Z Key</p>
+                <p><strong>B Button:</strong> X Key</p>
+            </div>
+            <div class="key-group">
+                <p><strong>Start:</strong> Enter Key</p>
+                <p><strong>Select:</strong> Shift Key</p>
+                <p><strong>Reset:</strong> R Key</p>
+            </div>
+        </div>
+    </div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "cpu": "./js/cpu.js",
+                "mmu": "./js/mmu.js",
+                "ppu": "./js/ppu.js",
+                "timer": "./js/timer.js",
+                "input": "./js/input.js",
+                "cartridge": "./js/cartridge.js",
+                "emulator": "./js/emulator.js"
+            }
+        }
+    </script>
+    <script type="module">
+        import { Emulator } from 'emulator';
+        
+        const emulator = new Emulator();
+        const fileInput = document.getElementById('file-input');
+        const romName = document.getElementById('rom-name');
+        const fpsCounter = document.getElementById('fps');
+        
+        let lastTime = 0;
+        let frames = 0;
+        
+        // Load ROM when file is selected
+        fileInput.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            romName.textContent = file.name;
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const arrayBuffer = e.target.result;
+                emulator.loadROM(new Uint8Array(arrayBuffer));
+                emulator.reset();
+                emulator.start();
+            };
+            reader.readAsArrayBuffer(file);
+        });
+        
+        // FPS counter
+        function updateFPS(time) {
+            frames++;
+            
+            if (time - lastTime >= 1000) {
+                fpsCounter.textContent = `${frames} FPS`;
+                frames = 0;
+                lastTime = time;
+            }
+            
+            requestAnimationFrame(updateFPS);
+        }
+        
+        requestAnimationFrame(updateFPS);
+    </script>
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"4c6229722a6346bc8eb5cb0e5eae5d41","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
+</body>
+</html>
+
