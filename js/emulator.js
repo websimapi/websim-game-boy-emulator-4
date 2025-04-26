@@ -7,13 +7,10 @@ import { Cartridge } from 'cartridge';
 
 export class Emulator {
     constructor() {
-        this.canvas = document.getElementById('screen');
-        this.ctx = this.canvas.getContext('2d');
-        
         // Create our components
         this.mmu = new MMU();
         this.cartridge = new Cartridge();
-        this.ppu = new PPU(this.mmu, this.ctx);
+        this.ppu = new PPU(this.mmu);
         this.timer = new Timer(this.mmu);
         this.input = new Input(this.mmu);
         this.cpu = new CPU(this.mmu);
@@ -22,17 +19,23 @@ export class Emulator {
         this.mmu.connectComponents(this.cartridge, this.ppu, this.timer, this.input);
         
         this.isRunning = false;
-        this.animationFrameId = null;
         
         // Constants
         this.CLOCK_SPEED = 4194304; // Hz
         this.FRAME_TIME = 1000 / 59.7; // ms
         this.cyclesPerFrame = Math.floor(this.CLOCK_SPEED / 59.7);
+        
+        // Frame buffer for rendering
+        this.frameBuffer = new Uint8ClampedArray(160 * 144 * 4);
+        
+        // Performance optimizations
+        this.frameCycles = 0;
+        this.lastFrameTime = 0;
     }
     
     loadROM(romData) {
         this.cartridge.load(romData);
-        console.log('ROM loaded:', this.cartridge.getTitle());
+        return this.cartridge.getTitle();
     }
     
     reset() {
@@ -40,31 +43,31 @@ export class Emulator {
         this.ppu.reset();
         this.timer.reset();
         this.mmu.reset();
+        this.frameCycles = 0;
+        this.lastFrameTime = 0;
     }
     
     start() {
         if (this.isRunning) return;
         this.isRunning = true;
-        this.lastFrameTime = performance.now();
-        this.run();
     }
     
     stop() {
         this.isRunning = false;
-        if (this.animationFrameId) {
-            cancelAnimationFrame(this.animationFrameId);
-            this.animationFrameId = null;
-        }
     }
     
-    run() {
-        if (!this.isRunning) return;
+    step(maxCycles) {
+        if (!this.isRunning) return 0;
         
-        // Execute enough cycles for one frame
-        let cyclesThisFrame = 0;
-        while (cyclesThisFrame < this.cyclesPerFrame) {
+        let cyclesExecuted = 0;
+        const startCycles = this.frameCycles;
+        
+        // Run until we've executed enough cycles or hit the max
+        while (this.frameCycles < this.cyclesPerFrame && cyclesExecuted < maxCycles) {
+            // Execute one CPU instruction
             const cycles = this.cpu.step();
-            cyclesThisFrame += cycles;
+            cyclesExecuted += cycles;
+            this.frameCycles += cycles;
             
             // Update PPU
             this.ppu.step(cycles);
@@ -74,10 +77,37 @@ export class Emulator {
             
             // Handle interrupts
             this.cpu.handleInterrupts();
+            
+            // Check if a frame is complete (PPU signals VBlank)
+            if (this.ppu.frameComplete) {
+                // Transfer the frame buffer
+                this.frameBuffer.set(this.ppu.getFrameBuffer());
+                this.ppu.frameComplete = false;
+                
+                // Reset frame cycle counter
+                this.frameCycles = 0;
+                break;
+            }
         }
         
-        // Schedule next frame
-        this.animationFrameId = requestAnimationFrame(() => this.run());
+        // If we didn't complete a frame but we've reached the max cycles for this batch,
+        // just return and continue in the next batch
+        return cyclesExecuted;
+    }
+    
+    getFrameBuffer() {
+        return this.frameBuffer;
+    }
+    
+    getFrameReady() {
+        return this.ppu.frameComplete;
+    }
+    
+    handleKeyDown(key) {
+        this.input.handleKeyDown({ key });
+    }
+    
+    handleKeyUp(key) {
+        this.input.handleKeyUp({ key });
     }
 }
-

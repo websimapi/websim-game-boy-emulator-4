@@ -72,6 +72,20 @@
             min-width: 200px;
             margin: 10px;
         }
+        #status {
+            margin-top: 10px;
+            font-weight: bold;
+            color: #306230;
+        }
+        #reset-btn {
+            padding: 10px 15px;
+            background-color: #306230;
+            color: white;
+            cursor: pointer;
+            border-radius: 5px;
+            border: none;
+            margin-top: 10px;
+        }
     </style>
 </head>
 <body>
@@ -85,6 +99,8 @@
             <label id="rom-label" for="file-input">Load ROM</label>
             <input type="file" id="file-input" accept=".gb">
             <div id="rom-name">No ROM loaded</div>
+            <div id="status">Ready</div>
+            <button id="reset-btn">Reset</button>
         </div>
     </div>
     
@@ -118,15 +134,53 @@
         }
     </script>
     <script type="module">
-        import { Emulator } from 'emulator';
-        
-        const emulator = new Emulator();
+        // Main thread script - handles UI and communicates with worker
         const fileInput = document.getElementById('file-input');
         const romName = document.getElementById('rom-name');
         const fpsCounter = document.getElementById('fps');
+        const statusText = document.getElementById('status');
+        const resetBtn = document.getElementById('reset-btn');
+        const canvas = document.getElementById('screen');
+        const ctx = canvas.getContext('2d');
         
+        // Initialize image data buffer for drawing frames
+        const imageData = ctx.createImageData(160, 144);
+        
+        // Create worker for emulation
+        const worker = new Worker('./js/emulator-worker.js', { type: 'module' });
+        
+        let isRunning = false;
         let lastTime = 0;
         let frames = 0;
+        
+        // Listen for messages from worker
+        worker.onmessage = function(e) {
+            const { type, data } = e.data;
+            
+            switch(type) {
+                case 'frame':
+                    // Draw the frame data
+                    const frameBuffer = new Uint8ClampedArray(data);
+                    imageData.data.set(frameBuffer);
+                    ctx.putImageData(imageData, 0, 0);
+                    frames++;
+                    break;
+                    
+                case 'status':
+                    statusText.textContent = data;
+                    break;
+                    
+                case 'loaded':
+                    statusText.textContent = "ROM loaded successfully!";
+                    isRunning = true;
+                    break;
+                    
+                case 'error':
+                    statusText.textContent = "Error: " + data;
+                    console.error(data);
+                    break;
+            }
+        };
         
         // Load ROM when file is selected
         fileInput.addEventListener('change', function(e) {
@@ -134,21 +188,52 @@
             if (!file) return;
             
             romName.textContent = file.name;
+            statusText.textContent = "Loading ROM...";
             
             const reader = new FileReader();
             reader.onload = function(e) {
                 const arrayBuffer = e.target.result;
-                emulator.loadROM(new Uint8Array(arrayBuffer));
-                emulator.reset();
-                emulator.start();
+                worker.postMessage({
+                    type: 'loadROM',
+                    data: new Uint8Array(arrayBuffer)
+                });
             };
             reader.readAsArrayBuffer(file);
         });
         
+        // Listen for keyboard events and forward to worker
+        document.addEventListener('keydown', function(e) {
+            worker.postMessage({
+                type: 'keydown',
+                data: e.key.toLowerCase()
+            });
+            
+            // Handle reset key directly
+            if (e.key.toLowerCase() === 'r') {
+                resetEmulator();
+                e.preventDefault();
+            }
+        });
+        
+        document.addEventListener('keyup', function(e) {
+            worker.postMessage({
+                type: 'keyup',
+                data: e.key.toLowerCase()
+            });
+        });
+        
+        // Reset button click
+        resetBtn.addEventListener('click', resetEmulator);
+        
+        function resetEmulator() {
+            if (isRunning) {
+                worker.postMessage({ type: 'reset' });
+                statusText.textContent = "Emulator reset";
+            }
+        }
+        
         // FPS counter
         function updateFPS(time) {
-            frames++;
-            
             if (time - lastTime >= 1000) {
                 fpsCounter.textContent = `${frames} FPS`;
                 frames = 0;
@@ -159,8 +244,11 @@
         }
         
         requestAnimationFrame(updateFPS);
+        
+        // Initialize worker
+        worker.postMessage({ type: 'init' });
+        statusText.textContent = "Emulator initialized";
     </script>
 <script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"4c6229722a6346bc8eb5cb0e5eae5d41","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
 </body>
 </html>
-

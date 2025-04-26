@@ -1,5 +1,5 @@
 export class PPU {
-    constructor(mmu, ctx) {
+    constructor(mmu, ctx = null) {
         this.mmu = mmu;
         this.ctx = ctx;
         
@@ -7,22 +7,28 @@ export class PPU {
         this.WIDTH = 160;
         this.HEIGHT = 144;
         
-        // Create image data buffer
-        this.imageData = this.ctx.createImageData(this.WIDTH, this.HEIGHT);
-        this.frameBuffer = new Uint32Array(this.imageData.data.buffer);
+        // Create frame buffer
+        this.frameBuffer = new Uint8ClampedArray(this.WIDTH * this.HEIGHT * 4);
         
         // PPU mode variables
         this.mode = 0;
         this.line = 0;
         this.dotCounter = 0;
         
+        // Track if a new frame is ready
+        this.frameComplete = false;
+        
         // DMG palette colors (light to dark)
         this.colors = [
-            0xFFFFFFFF, // White
-            0xFFAAAAAA, // Light gray
-            0xFF555555, // Dark gray
-            0xFF000000  // Black
+            [255, 255, 255, 255], // White
+            [170, 170, 170, 255], // Light gray
+            [85, 85, 85, 255],    // Dark gray
+            [0, 0, 0, 255]        // Black
         ];
+        
+        // VRAM and OAM
+        this.vram = new Uint8Array(0x2000);
+        this.oam = new Uint8Array(0xA0);
         
         this.reset();
     }
@@ -44,10 +50,21 @@ export class PPU {
         this.mode = 2;    // Start in OAM scan mode
         this.line = 0;
         this.dotCounter = 0;
+        this.frameComplete = false;
         
-        // Clear the screen
-        this.frameBuffer.fill(this.colors[0]);
-        this.ctx.putImageData(this.imageData, 0, 0);
+        // Clear the frame buffer
+        this.clearFrameBuffer();
+    }
+    
+    clearFrameBuffer() {
+        const white = this.colors[0];
+        for (let i = 0; i < this.WIDTH * this.HEIGHT; i++) {
+            const offset = i * 4;
+            this.frameBuffer[offset] = white[0];
+            this.frameBuffer[offset + 1] = white[1];
+            this.frameBuffer[offset + 2] = white[2];
+            this.frameBuffer[offset + 3] = white[3];
+        }
     }
     
     read(address) {
@@ -77,8 +94,7 @@ export class PPU {
                     this.line = 0;
                     this.dotCounter = 0;
                     // Clear the screen when LCD is disabled
-                    this.frameBuffer.fill(this.colors[0]);
-                    this.ctx.putImageData(this.imageData, 0, 0);
+                    this.clearFrameBuffer();
                 }
                 this.lcdc = value;
                 break;
@@ -109,6 +125,10 @@ export class PPU {
         return (this.lcdc & 0x80) !== 0;
     }
     
+    getFrameBuffer() {
+        return this.frameBuffer;
+    }
+    
     step(cycles) {
         if (!this.isLCDEnabled()) {
             return;
@@ -133,6 +153,7 @@ export class PPU {
                     if (this.line === 144) {
                         // Enter VBlank
                         this.mode = 1;
+                        this.frameComplete = true;
                         
                         // Request VBlank interrupt
                         this.mmu.writeByte(0xFF0F, this.mmu.readByte(0xFF0F) | 0x01);
@@ -141,9 +162,6 @@ export class PPU {
                         if (this.stat & 0x10) {
                             requestInterrupt = true;
                         }
-                        
-                        // Render frame at end of last scanline
-                        this.ctx.putImageData(this.imageData, 0, 0);
                     } else {
                         // Back to OAM scan for next line
                         this.mode = 2;
@@ -278,7 +296,14 @@ export class PPU {
         // Convert pixel data to actual colors and write to frame buffer
         const lineOffset = this.line * this.WIDTH;
         for (let x = 0; x < this.WIDTH; x++) {
-            this.frameBuffer[lineOffset + x] = this.colors[scanlinePixels[x].color];
+            const pixelOffset = (lineOffset + x) * 4;
+            const colorIndex = scanlinePixels[x].color;
+            const color = this.colors[colorIndex];
+            
+            this.frameBuffer[pixelOffset] = color[0];
+            this.frameBuffer[pixelOffset + 1] = color[1];
+            this.frameBuffer[pixelOffset + 2] = color[2];
+            this.frameBuffer[pixelOffset + 3] = color[3];
         }
     }
     
@@ -479,4 +504,3 @@ export class PPU {
         }
     }
 }
-

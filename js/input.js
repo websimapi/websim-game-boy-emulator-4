@@ -8,14 +8,6 @@ export class Input {
         
         // JOYP register (which key type is selected)
         this.joyp = 0xFF;
-        
-        // Register key handler
-        this.setupKeyHandlers();
-    }
-    
-    setupKeyHandlers() {
-        window.addEventListener('keydown', (e) => this.handleKeyDown(e));
-        window.addEventListener('keyup', (e) => this.handleKeyUp(e));
     }
     
     handleKeyDown(e) {
@@ -61,9 +53,7 @@ export class Input {
                 break;
         }
         
-        // Prevent default behavior for these keys
         if (changed) {
-            e.preventDefault();
             this.updateJoypadInterrupt();
         }
     }
@@ -108,10 +98,6 @@ export class Input {
                 changed = true;
                 break;
         }
-        
-        if (changed) {
-            e.preventDefault();
-        }
     }
     
     updateJoypadInterrupt() {
@@ -140,4 +126,3 @@ export class Input {
         this.joyp = value;
     }
 }
-
